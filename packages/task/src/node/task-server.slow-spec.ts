@@ -114,7 +114,7 @@ describe('Task server / back-end', function (): void {
         // create task using raw process
         const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('process', executable, [someString]), wsRoot);
 
-        const p = new Promise((resolve, reject) => {
+        await new Promise((resolve, reject) => {
             const toDispose = taskWatcher.onTaskExit((event: TaskExitedEvent) => {
                 if (event.taskId === taskInfo.taskId && event.code === 0) {
                     if (typeof taskInfo.terminalId === 'number') {
@@ -126,37 +126,26 @@ describe('Task server / back-end', function (): void {
                 }
             });
         });
-
-        await p;
     });
 
-    it('task is executed successfully with cwd as a file URI', async function (): Promise<void> {
+    it.only('task is executed successfully with cwd as a file URI', async function (): Promise<void> {
         const command = isWindows ? commandShortRunningWindows : (isOSX ? commandShortRunningOsx : commandShortRunning);
-        const config = createProcessTaskConfig('shell', command, [], FileUri.create(wsRoot).toString());
+        const config = createProcessTaskConfig('shell', command, undefined, FileUri.create(wsRoot).toString());
         const taskInfo: TaskInfo = await taskServer.run(config, wsRoot);
-
-        const p = checkSuccessfullProcessExit(taskInfo, taskWatcher);
-
-        await p;
+        await checkSuccessfullProcessExit(taskInfo, taskWatcher);
     });
 
     it('task is executed successfully using terminal process', async function (): Promise<void> {
         const command = isWindows ? commandShortRunningWindows : (isOSX ? commandShortRunningOsx : commandShortRunning);
-        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('shell', command, []), wsRoot);
-
-        const p = checkSuccessfullProcessExit(taskInfo, taskWatcher);
-
-        await p;
+        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('shell', command, undefined), wsRoot);
+        await checkSuccessfullProcessExit(taskInfo, taskWatcher);
     });
 
     it('task is executed successfully using raw process', async function (): Promise<void> {
         const command = isWindows ? commandShortRunningWindows : (isOSX ? commandShortRunningOsx : commandShortRunning);
         const executable = FileUri.fsPath(wsRootUri.resolve(command));
         const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('process', executable, []));
-
-        const p = checkSuccessfullProcessExit(taskInfo, taskWatcher);
-
-        await p;
+        await checkSuccessfullProcessExit(taskInfo, taskWatcher);
     });
 
     it('task without a specific runner is executed successfully using as a process', async function (): Promise<void> {
@@ -165,30 +154,20 @@ describe('Task server / back-end', function (): void {
         // there's no runner registered for the 'npm' task type
         const taskConfig: TaskConfiguration = createTaskConfig('npm', command, []);
         const taskInfo: TaskInfo = await taskServer.run(taskConfig, wsRoot);
-
-        const p = checkSuccessfullProcessExit(taskInfo, taskWatcher);
-
-        await p;
+        await checkSuccessfullProcessExit(taskInfo, taskWatcher);
     });
 
     it('task can successfully execute command found in system path using a terminal process', async function (): Promise<void> {
         const command = isWindows ? commandWindowsNoop : commandUnixNoop;
-
         const opts: TaskConfiguration = createProcessTaskConfig('shell', command, []);
         const taskInfo: TaskInfo = await taskServer.run(opts, wsRoot);
-
-        const p = checkSuccessfullProcessExit(taskInfo, taskWatcher);
-
-        await p;
+        await checkSuccessfullProcessExit(taskInfo, taskWatcher);
     });
 
     it('task can successfully execute command found in system path using a raw process', async function (): Promise<void> {
         const command = isWindows ? commandWindowsNoop : commandUnixNoop;
         const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('process', command, []), wsRoot);
-
-        const p = checkSuccessfullProcessExit(taskInfo, taskWatcher);
-
-        await p;
+        await checkSuccessfullProcessExit(taskInfo, taskWatcher);
     });
 
     it('task using type "terminal" can be killed', async function (): Promise<void> {
@@ -228,8 +207,7 @@ describe('Task server / back-end', function (): void {
 
     it('task using type "process" can be killed', async function (): Promise<void> {
         const taskInfo: TaskInfo = await taskServer.run(createTaskConfigTaskLongRunning('process'), wsRoot);
-
-        const p = new Promise<string | number>((resolve, reject) => {
+        const signalOrCode = await new Promise<string | number>((resolve, reject) => {
             taskWatcher.onTaskExit((event: TaskExitedEvent) => {
                 if (isWindows) {
                     if (event.taskId !== taskInfo.taskId || event.code === undefined) {
@@ -246,12 +224,10 @@ describe('Task server / back-end', function (): void {
 
             taskServer.kill(taskInfo.taskId);
         });
-
         // node-pty reports different things on Linux/macOS vs Windows when
         // killing a process.  This is not ideal, but that's how things are
         // currently.  Ideally, its behavior should be aligned as much as
         // possible on what node's child_process module does.
-        const signalOrCode = await p;
         if (isWindows) {
             // On Windows, node-pty just reports an exit code of 0.
             expect(signalOrCode).equals(0);
@@ -266,8 +242,7 @@ describe('Task server / back-end', function (): void {
      */
     it('task using terminal process can handle command that does not exist', async function (): Promise<void> {
         const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig2('shell', bogusCommand, []), wsRoot);
-
-        const p = new Promise<number>((resolve, reject) => {
+        const code = await new Promise<number>((resolve, reject) => {
             taskWatcher.onTaskExit((event: TaskExitedEvent) => {
                 if (event.taskId !== taskInfo.taskId || event.code === undefined) {
                     reject(new Error(JSON.stringify(event)));
@@ -275,12 +250,10 @@ describe('Task server / back-end', function (): void {
                 resolve(event.code);
             });
         });
-
         // node-pty reports different things on Linux/macOS vs Windows when
         // killing a process.  This is not ideal, but that's how things are
         // currently.  Ideally, its behavior should be aligned as much as
         // possible on what node's child_process module does.
-        const code = await p;
         if (isWindows) {
             expect(code).equals(1);
         } else {
@@ -378,7 +351,7 @@ function createProcessTaskConfig(processType: ProcessType, command: string, args
         _scope: '/source/folder',
         command,
         args,
-        options: { cwd: wsRoot },
+        options: { cwd },
     };
 }
 
@@ -400,10 +373,8 @@ function createTaskConfigTaskLongRunning(processType: ProcessType): TaskConfigur
         _scope: '/source/folder',
         options: { cwd: wsRoot },
         command: commandLongRunning,
-        args: [],
         windows: {
             command: FileUri.fsPath(wsRootUri.resolve(commandLongRunningWindows)),
-            args: [],
             options: { cwd: wsRoot }
         },
         osx: {
@@ -413,14 +384,13 @@ function createTaskConfigTaskLongRunning(processType: ProcessType): TaskConfigur
 }
 
 function checkSuccessfullProcessExit(taskInfo: TaskInfo, taskWatcher: TaskWatcher): Promise<object> {
-    const p = new Promise<object>((resolve, reject) => {
+    return new Promise<object>((resolve, reject) => {
         const toDispose = taskWatcher.onTaskExit((event: TaskExitedEvent) => {
+            console.log('EXIT', event);
             if (event.taskId === taskInfo.taskId && event.code === 0) {
                 toDispose.dispose();
                 resolve();
             }
         });
     });
-
-    return p;
 }

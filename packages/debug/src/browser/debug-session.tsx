@@ -37,6 +37,8 @@ import { DebugConfiguration } from '../common/debug-common';
 import { SourceBreakpoint } from './breakpoint/breakpoint-marker';
 import { FileSystem } from '@theia/filesystem/lib/common';
 import { TerminalWidgetOptions, TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
+import { prepareCommandLine, CommandLineOptions } from './run-in-terminal';
+import { TerminalProcessInfo } from '@theia/terminal/lib/common/base-terminal-protocol';
 
 export enum DebugState {
     Inactive,
@@ -367,10 +369,19 @@ export class DebugSession implements CompositeTreeElement {
         return this.connection.onDidCustomEvent;
     }
 
+    protected async prepareCommandLine(processInfo: TerminalProcessInfo | undefined, options: CommandLineOptions): Promise<string> {
+        return prepareCommandLine(processInfo, options);
+    }
+
     protected async runInTerminal({ arguments: { title, cwd, args, env } }: DebugProtocol.RunInTerminalRequest): Promise<DebugProtocol.RunInTerminalResponse['body']> {
         const terminal = await this.doCreateTerminal({ title, cwd, env });
-        terminal.sendText(args.join(' ') + '\n');
-        return { processId: await terminal.processId };
+        // TODO: Getting a property shouldn't map to a promise for an RPC call.
+        //       Either change the way the API works or transform the attribute
+        //       into a function.
+        // Parallelize promise resolution by requesting both now:
+        const { processId, processInfo } = terminal;
+        terminal.sendText(this.prepareCommandLine(await processInfo, { cwd, args, env }) + '\n');
+        return { processId: await processId };
     }
 
     protected async doCreateTerminal(options: TerminalWidgetOptions): Promise<TerminalWidget> {
